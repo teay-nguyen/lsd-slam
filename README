@@ -1,0 +1,15 @@
+representation of 3d poses as elements of lie-algebras (sec 2.1)
+derive direct image alignment as weighted least-squares minimization on lie-manifolds (sec 2.2)
+propagation of uncertainty (sec 2.3)
+
+bold/capital - matrices
+bold/lower - vectors
+[.]_n - nth row of matrix
+I : Ω -> R - Images
+D : Ω -> R - per-pixel inverse depth map
+V : Ω -> R - inverse depth variance
+Ω ⊂ R^2 - set of normalized pixel coordinates
+
+se(3) - poses
+
+
