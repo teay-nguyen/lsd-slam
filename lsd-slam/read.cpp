@@ -2,12 +2,19 @@
 #include <iostream>
 #include <eigen3/Eigen/Core>
 #include <sophus/sim3.hpp>
+#include <sophus/se3.hpp>
 #include <g2o/core/base_vertex.h>
 #include <unordered_set>
 #include <array>
 #include <memory>
 
 static constexpr int PYRAMID_LEVELS = 5;
+
+
+struct dense_depth_tracker_settings {
+
+};
+
 
 /*
 
@@ -26,8 +33,10 @@ cx, cy - coordinates of the principle point (?)
 
 gradients are used for computing the photometric error
 
-
 TODO: write the se3 tracker and tracking reference 
+NOTE: there's a noticable lack of vectors (references), owning pointers are used in lieu
+NOTE: what is the inverse depth variance?
+NOTE: document the use of the inverse depth variance (1/z)
 
 */
 
@@ -129,6 +138,7 @@ keyframe_obj::keyframe_obj(int t_id, int t_width, int t_height, const Eigen::Mat
 
 
 // reference frame(?) to update map
+// tracking_reference precedes the se3_tracker
 class tracking_reference {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
@@ -138,13 +148,14 @@ public:
   int m_frame_id;
   keyframe_obj* m_keyframe;
 
-  std::array<Eigen::Vector3f*, PYRAMID_LEVELS> m_pos; // (x,y,z)
-  std::array<Eigen::Vector2f*, PYRAMID_LEVELS> m_grad; // (dx, dy)
+  // NOTE: not sure why original source code used pointers for this
+  std::array<std::vector<Eigen::Vector3f>, PYRAMID_LEVELS> m_pos;   // (x,y,z)
+  std::array<std::vector<Eigen::Vector2f>, PYRAMID_LEVELS> m_grad;  // (dx,dy)
+  std::array<std::vector<Eigen::Vector2f>, PYRAMID_LEVELS> m_Ivar;  // (I, var) color and variance
 };
 
 tracking_reference::tracking_reference() : m_frame_id(-1), m_keyframe(nullptr) {
-  m_pos.fill(nullptr);
-  m_grad.fill(nullptr);
+
 }
 
 
@@ -154,12 +165,57 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
   se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K);
+  se3_tracker(const se3_tracker&) = delete;
+  se3_tracker& operator=(const se3_tracker&) = delete;
+  ~se3_tracker();
 
   int m_width, m_height;
 
   Eigen::Matrix3f m_K, m_K_inv;
   float m_fx, m_fy, m_cx, m_cy;
   float m_fix, m_fiy, m_cix, m_ciy;
+
+  Sophus::SE3d track_frame(tracking_reference* t_ref, keyframe_obj* t_frame, const Sophus::SE3d& t_frame_to_ref_initial_estimate);
+
+private:
+  /*
+
+  ref_pnt - 3d points in reference keyframe
+  ref_col_var - per point photometric data (stored grayscale intensity, intensity variance)
+  idx_buf - valid point indicecs
+  ref_num - number of points in reference set
+  frame - current frame being aligned to reference
+  ref_to_frame - current pose estimate from reference frame to current frame (rot + translation), this is what the optimizer is trying to refine to minimize photometric error
+  int lvl - img pyramid level
+
+  */
+
+  float calculate_residual_and_bufs(const Eigen::Vector3f* ref_pnt,
+                                    const Eigen::Vector2f* ref_col_var,
+                                    int* idx_buf,
+                                    int ref_num,
+                                    const keyframe_obj& frame,
+                                    const Sophus::SE3d& ref_to_frame,
+                                    int lvl);
+
+  /*
+
+  per point working memory the se3 tracker keeps for photometric alignment
+
+  */
+
+  float* m_buf_warped_residual;
+	float* m_buf_warped_dx;
+	float* m_buf_warped_dy;
+	float* m_buf_warped_x;
+	float* m_buf_warped_y;
+	float* m_buf_warped_z;
+
+	float* m_buf_d;
+	float* m_buf_idepthVar;
+	float* m_buf_weight_p;
+
+	int m_buf_warped_size;
 };
 
 se3_tracker::se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h), m_K(t_K), m_K_inv(t_K.inverse()) {
@@ -168,13 +224,38 @@ se3_tracker::se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), 
 	m_cx = t_K(0,2);
 	m_cy = t_K(1,2);
 
-  m_K_inv = t_K.inverse();
   m_fix = m_K_inv(0,0);
   m_fiy = m_K_inv(1,1);
 	m_cix = m_K_inv(0,2);
 	m_ciy = m_K_inv(1,2);
+
+  m_buf_warped_residual = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_warped_dx = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_warped_dy = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_warped_x = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_warped_y = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_warped_z = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+
+	m_buf_d = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_idepthVar = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+	m_buf_weight_p = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
+
+  m_buf_warped_size = 0;
 }
 
+se3_tracker::~se3_tracker() {
+  // free (owning) buffers
+  Eigen::internal::aligned_free((void*)m_buf_warped_residual);
+	Eigen::internal::aligned_free((void*)m_buf_warped_dx);
+	Eigen::internal::aligned_free((void*)m_buf_warped_dy);
+	Eigen::internal::aligned_free((void*)m_buf_warped_x);
+	Eigen::internal::aligned_free((void*)m_buf_warped_y);
+	Eigen::internal::aligned_free((void*)m_buf_warped_z);
+
+	Eigen::internal::aligned_free((void*)m_buf_d);
+	Eigen::internal::aligned_free((void*)m_buf_idepthVar);
+	Eigen::internal::aligned_free((void*)m_buf_weight_p);
+}
 
 
 
@@ -184,6 +265,7 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
   slam_context(int t_w, int t_h, Eigen::Matrix3f t_K);
+  ~slam_context() = default;
 
   //    disable copying
   slam_context(const slam_context&) = delete;
@@ -196,11 +278,13 @@ public:
 
 private:
   std::unique_ptr<tracking_reference> m_reference_tracker;
-  std::unique_ptr<se3_tracker> m_tracker;
+  std::unique_ptr<se3_tracker> m_pose_tracker;
 };
 
 slam_context::slam_context(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h), m_K(t_K), m_current_keyframe(nullptr) {
   std::cout << "slam_context instantiated" << '\n';
+  m_reference_tracker = std::make_unique<tracking_reference>();
+  m_pose_tracker = std::make_unique<se3_tracker>(t_w, t_h, t_K);
 }
 
 
@@ -235,8 +319,11 @@ int main(int argc, char** argv) {
       break;
     }
 
-    cv::Mat img_gray;
+    cv::Mat img_gray, img_float;
     cv::cvtColor(frame, img_gray, cv::COLOR_BGR2GRAY);
+
+    img_gray.convertTo(img_float, 5); // define CV_32F 5
+
     cv::imshow(windowName, img_gray);
 
     if (cv::waitKey(30) >= 0) {
