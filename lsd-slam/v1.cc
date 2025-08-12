@@ -319,10 +319,9 @@ int main(int argc, char** argv) {
       break;
     }
 
-    cv::Mat img_gray, img_float;
+    // all the warps/Jacobians assume a pinhole model and stable brightness.
+    cv::Mat img_gray;
     cv::cvtColor(frame, img_gray, cv::COLOR_BGR2GRAY);
-
-    img_gray.convertTo(img_float, 5); // define CV_32F 5
 
     cv::imshow(windowName, img_gray);
 

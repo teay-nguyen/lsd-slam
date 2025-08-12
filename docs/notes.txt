@@ -1,0 +1,39 @@
+Direct visual odometry forgone, replaced by semi-dense depth filtering (combining direct tracking with keypoints).
+However, this does not build a consistent global map of the environment including loop closures.
+
+In pose graph optimization, the world is represented as a number of keyframes connected by
+pose-pose constraints, optimized by g2o.
+
+LSD-SLAM locally tracks the motion of the camera and builds a consistent global map[1].
+The method uses direct image alignment[2] + filtering-based estimation of semi-dense depth maps,
+allowing correction of accumulated-drift.
+
+
+Image (photometric) alignment using warp function and by optimizing warp params:
+
+[1] a pose-graph consisting of keyframes as vertices and 3d similarity transforms as edges (sim3)
+
+[2] two images are aligned by Gauss-Newton minimization of the photometric error(eq. 5)
+    which gives the max-likelihood estimator for the parameter(s) of the warp between those two images.
+    Starting with initial estimate (pose), we compute the increment (see eq. 6).
+
+    I have an E (sum of squared photometric residuals, squint them eyes to read the paper). At the current estimate,
+    I can approximate E near the estimate by a quadratic model using the first-order Taylor (not Taylor
+    series for the AP students, instead its Taylor for the multivariates) of the residuals(*).
+    J is the derivative of the stacked residual vector r, (J^T * J) is the Gauss-Newton approx. of the Hessian of E, see (eq. 6).
+
+    everything is also multipled by a weight matrix W to avoid occlusion/reflection.
+
+    see first-order taylor (linearization); you expand out (r_0 + J delta)**2 algebraically. the delta behind J is what I'm
+    trying to solve for (I think), which is also the left-multiplied increment.
+
+
+internal operations:
+- employ scale-aware image alignment to estimate similarity transform between two keyframes
+- incorporate probabilistically consistent uncertainty of estimated depth into tracking
+
+
+what are semi-dense depth maps? how are they represented pragmatically?
+what is direct image alignment?
+what is filtering-based estimation of semi-dense depth maps?
+what is a covariance?
