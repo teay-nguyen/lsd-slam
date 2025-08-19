@@ -15,9 +15,9 @@ Image (photometric) alignment using warp function and by optimizing warp params:
 
 [2] two images are aligned by Gauss-Newton minimization of the photometric error(eq. 5)
     which gives the max-likelihood estimator for the parameter(s) of the warp between those two images.
-    Starting with initial estimate (pose), we compute the increment (see eq. 6).
+    Starting with initial estimate (pose), we compute the increment (see eq. 6) and sum to minimize error.
 
-    I have an E (sum of squared photometric residuals, squint them eyes to read the paper). At the current estimate,
+    I have an E (sum of squared photometric residuals vector, squint them eyes to read the paper). At the current estimate,
     I can approximate E near the estimate by a quadratic model using the first-order Taylor (not Taylor
     series for the AP students, instead its Taylor for the multivariates) of the residuals(*).
     J is the derivative of the stacked residual vector r, (J^T * J) is the Gauss-Newton approx. of the Hessian of E, see (eq. 6).

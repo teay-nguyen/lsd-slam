@@ -10,6 +10,8 @@
 
 static constexpr int PYRAMID_LEVELS = 5;
 
+using FAligned = Eigen::aligned_allocator<float>;
+
 
 struct dense_depth_tracker_settings {
 
@@ -51,6 +53,7 @@ class se3_tracker;
 class vertex_sim3 : public g2o::BaseVertex<7, Sophus::Sim3d> {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+  vertex_sim3() : m_fix_scale(false) {}
 
   virtual void setToOriginImpl() {
     _estimate = Sophus::Sim3d();
@@ -64,6 +67,8 @@ public:
 
   bool m_fix_scale;
 };
+
+
 
 
 class keyframe_pose_obj {
@@ -91,6 +96,10 @@ private:
 keyframe_pose_obj::keyframe_pose_obj(keyframe_obj* t_frame) : m_tracking_parent(nullptr), m_keyframe(t_frame), m_graph_vertex(nullptr) {
   m_absolute_pos_cam_to_world = m_absolute_pos_cam_to_world_new = m_tracking_result_to_parent = Sophus::Sim3d();
 }
+
+
+
+
 
 class keyframe_obj {
 public:
@@ -149,9 +158,9 @@ public:
   keyframe_obj* m_keyframe;
 
   // NOTE: not sure why original source code used pointers for this
-  std::array<std::vector<Eigen::Vector3f>, PYRAMID_LEVELS> m_pos;   // (x,y,z)
-  std::array<std::vector<Eigen::Vector2f>, PYRAMID_LEVELS> m_grad;  // (dx,dy)
-  std::array<std::vector<Eigen::Vector2f>, PYRAMID_LEVELS> m_Ivar;  // (I, var) color and variance
+  std::array<std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>, PYRAMID_LEVELS> m_pos;   // (x,y,z)
+  std::array<std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f>>, PYRAMID_LEVELS> m_grad;  // (dx,dy)
+  std::array<std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f>>, PYRAMID_LEVELS> m_Ivar;  // (I, var) color and variance
 };
 
 tracking_reference::tracking_reference() : m_frame_id(-1), m_keyframe(nullptr) {
@@ -204,16 +213,8 @@ private:
 
   */
 
-  float* m_buf_warped_residual;
-	float* m_buf_warped_dx;
-	float* m_buf_warped_dy;
-	float* m_buf_warped_x;
-	float* m_buf_warped_y;
-	float* m_buf_warped_z;
-
-	float* m_buf_d;
-	float* m_buf_idepthVar;
-	float* m_buf_weight_p;
+  std::vector<float, FAligned> m_buf_warped_residual, m_buf_warped_dx, m_buf_warped_dy, m_buf_warped_x,
+	                             m_buf_warped_y, m_buf_warped_z, m_buf_d, m_buf_idepthVar, m_buf_weight_p;
 
 	int m_buf_warped_size;
 };
@@ -229,33 +230,30 @@ se3_tracker::se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), 
 	m_cix = m_K_inv(0,2);
 	m_ciy = m_K_inv(1,2);
 
-  m_buf_warped_residual = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_warped_dx = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_warped_dy = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_warped_x = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_warped_y = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_warped_z = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-
-	m_buf_d = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_idepthVar = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-	m_buf_weight_p = (float*)Eigen::internal::aligned_malloc(t_w*t_h*sizeof(float));
-
   m_buf_warped_size = 0;
 }
 
 se3_tracker::~se3_tracker() {
   // free (owning) buffers
-  Eigen::internal::aligned_free((void*)m_buf_warped_residual);
-	Eigen::internal::aligned_free((void*)m_buf_warped_dx);
-	Eigen::internal::aligned_free((void*)m_buf_warped_dy);
-	Eigen::internal::aligned_free((void*)m_buf_warped_x);
-	Eigen::internal::aligned_free((void*)m_buf_warped_y);
-	Eigen::internal::aligned_free((void*)m_buf_warped_z);
 
-	Eigen::internal::aligned_free((void*)m_buf_d);
-	Eigen::internal::aligned_free((void*)m_buf_idepthVar);
-	Eigen::internal::aligned_free((void*)m_buf_weight_p);
 }
+
+Sophus::SE3d se3_tracker::track_frame(tracking_reference* t_ref, keyframe_obj* t_frame,
+                                      const Sophus::SE3d& t_frame_to_ref_initial_estimate) {
+  return Sophus::SE3d();
+}
+
+
+float se3_tracker::calculate_residual_and_bufs(const Eigen::Vector3f* ref_pnt,
+                                  const Eigen::Vector2f* ref_col_var,
+                                  int* idx_buf,
+                                  int ref_num,
+                                  const keyframe_obj& frame,
+                                  const Sophus::SE3d& ref_to_frame,
+                                  int lvl) {
+  return 0.f;
+}
+
 
 
 
@@ -266,10 +264,11 @@ public:
 
   slam_context(int t_w, int t_h, Eigen::Matrix3f t_K);
   ~slam_context() = default;
-
   //    disable copying
   slam_context(const slam_context&) = delete;
   slam_context& operator=(const slam_context&) = delete;
+
+  void random_init(int frame_id);
 
   int m_width, m_height;
   Eigen::Matrix3f m_K;
@@ -277,27 +276,40 @@ public:
   std::shared_ptr<keyframe_obj> m_current_keyframe;
 
 private:
+  //    tracking thread
   std::unique_ptr<tracking_reference> m_reference_tracker;
   std::unique_ptr<se3_tracker> m_pose_tracker;
+
+  // mapping thread
+  std::unique_ptr<tracking_reference> m_mapping_reference_tracker;
 };
 
-slam_context::slam_context(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h), m_K(t_K), m_current_keyframe(nullptr) {
+slam_context::slam_context(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h),
+                                                                    m_K(t_K), m_current_keyframe(nullptr) {
   std::cout << "slam_context instantiated" << '\n';
   m_reference_tracker = std::make_unique<tracking_reference>();
+  m_mapping_reference_tracker = std::make_unique<tracking_reference>();
   m_pose_tracker = std::make_unique<se3_tracker>(t_w, t_h, t_K);
+}
+
+void slam_context::random_init(int frame_id) {
+  m_current_keyframe.reset(new keyframe_obj(frame_id, m_width, m_height, m_K));
 }
 
 
 
 
 
-
 int main(int argc, char** argv) {
-  int w=0, h=0;
+  int w=1280, h=720;
   Eigen::Matrix3f K;
-  K << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+  K << 700.f, 0.f, 640.f,
+      0.f, 700.f, 360.f,
+      0.f,   0.f,   1.f;
 
+  int running_idx = 0;
   std::unique_ptr<slam_context> ctx = std::make_unique<slam_context>(w,h,K);
+  ctx->random_init(running_idx);
 
     // opencv
   const std::string inputPath = "./car_pov.mp4";
@@ -311,7 +323,7 @@ int main(int argc, char** argv) {
   const std::string windowName = "SLAM";
   cv::namedWindow(windowName, cv::WINDOW_NORMAL);
 
-  cv::Mat frame;
+  cv::Mat frame = cv::Mat(w,h,CV_8U);
   while (true) {
     bool readSuccess = cap.read(frame);
     if (!readSuccess) {

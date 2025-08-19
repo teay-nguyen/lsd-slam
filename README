@@ -18,5 +18,3 @@ note:
 - (maybe) replace raw-intensity error with a learned dense descriptor
 - (maybe) tightly-coupled IMU (VIO) with preintegration
 - loop closure
-
-the GPT-generated introduction may (or may not) help with the math

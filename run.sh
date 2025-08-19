@@ -1,4 +1,5 @@
 #!/bin/bash
+rm -r build
 cppcheck . --enable=all
 cmake -B build
 cmake --build build
