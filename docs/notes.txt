@@ -8,6 +8,8 @@ LSD-SLAM locally tracks the motion of the camera and builds a consistent global 
 The method uses direct image alignment[2] + filtering-based estimation of semi-dense depth maps,
 allowing correction of accumulated-drift.
 
+1st step: calibrate the camera then undistort frames (use camera intrinsics to create matrix K)
+
 
 Image (photometric) alignment using warp function and by optimizing warp params:
 
@@ -27,6 +29,16 @@ Image (photometric) alignment using warp function and by optimizing warp params:
     see first-order taylor (linearization); you expand out (r_0 + J delta)**2 algebraically. the delta behind J is what I'm
     trying to solve for (I think), which is also the left-multiplied increment.
 
+
+
+lie group: apparently I can do algebra and calculus on these (smooth manifold)
+lie algebra: "tangent space at the identity of the lie group." represents infinitesimal motions (tiny rotations,
+translations) that when exponentiated, moves along the lie group.
+
+rotations live on SO(3) --> 3d manifold embedded in 9d space(3x3 matrices) -- captures orientation
+rigid-body poses live on SE(3) --> 6d manifold (3 translation + 3 rot)
+
+se(3) -- represent infinitesimal rigid-body motions.
 
 internal operations:
 - employ scale-aware image alignment to estimate similarity transform between two keyframes

@@ -36,16 +36,17 @@ cx, cy - coordinates of the principle point (?)
 gradients are used for computing the photometric error
 
 TODO: write the se3 tracker and tracking reference 
+TODO: implement the Pangolin frontend
 NOTE: there's a noticable lack of vectors (references), owning pointers are used in lieu
 NOTE: what is the inverse depth variance?
 NOTE: document the use of the inverse depth variance (1/z)
 
 */
 
-class keyframe_pose_obj;
-class keyframe_obj;
-class tracking_reference;
-class se3_tracker;
+class KeyframePose;
+class Keyframe;
+class ReferenceTracker;
+class SE3Tracker;
 
 
 
@@ -71,19 +72,19 @@ public:
 
 
 
-class keyframe_pose_obj {
+class KeyframePose {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  keyframe_pose_obj(keyframe_obj* t_frame);
-  keyframe_pose_obj(const keyframe_pose_obj&) = delete;
-  keyframe_pose_obj& operator=(const keyframe_pose_obj&) = delete;
+  KeyframePose(Keyframe* t_frame);
+  KeyframePose(const KeyframePose&) = delete;
+  KeyframePose& operator=(const KeyframePose&) = delete;
 
-  keyframe_pose_obj* m_tracking_parent;
+  KeyframePose* m_tracking_parent;
   Sophus::Sim3d m_tracking_result_to_parent;
 
   int m_frame_id; // why?
-  keyframe_obj* m_keyframe;
+  Keyframe* m_keyframe;
 
   //    node of the pose graph that gets optimized
   vertex_sim3* m_graph_vertex;
@@ -93,7 +94,7 @@ private:
   Sophus::Sim3d m_absolute_pos_cam_to_world_new; // added when merging optimization
 };
 
-keyframe_pose_obj::keyframe_pose_obj(keyframe_obj* t_frame) : m_tracking_parent(nullptr), m_keyframe(t_frame), m_graph_vertex(nullptr) {
+KeyframePose::KeyframePose(Keyframe* t_frame) : m_tracking_parent(nullptr), m_keyframe(t_frame), m_graph_vertex(nullptr) {
   m_absolute_pos_cam_to_world = m_absolute_pos_cam_to_world_new = m_tracking_result_to_parent = Sophus::Sim3d();
 }
 
@@ -101,23 +102,23 @@ keyframe_pose_obj::keyframe_pose_obj(keyframe_obj* t_frame) : m_tracking_parent(
 
 
 
-class keyframe_obj {
+class Keyframe {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  keyframe_obj(int t_id, int t_width, int t_height, const Eigen::Matrix3f& t_K);
-  keyframe_obj(const keyframe_obj&) = delete;
-  keyframe_obj& operator=(const keyframe_obj&) = delete;
+  Keyframe(int t_id, int t_width, int t_height, const Eigen::Matrix3f& t_K);
+  Keyframe(const Keyframe&) = delete;
+  Keyframe& operator=(const Keyframe&) = delete;
 
-  std::unordered_set<keyframe_obj*,
-                     std::hash<keyframe_obj*>,
-                     std::equal_to<keyframe_obj*>,
-                     Eigen::aligned_allocator<keyframe_obj*>> m_neighbors;
+  std::unordered_set<Keyframe*,
+                     std::hash<Keyframe*>,
+                     std::equal_to<Keyframe*>,
+                     Eigen::aligned_allocator<Keyframe*>> m_neighbors;
 
   int m_id;
   std::array<int, PYRAMID_LEVELS> m_width, m_height;
 
-  std::unique_ptr<keyframe_pose_obj> m_pose;
+  std::unique_ptr<KeyframePose> m_pose;
   Sophus::Sim3d m_last_constraint_tracked_cam_to_world;
 
   std::array<Eigen::Matrix3f, PYRAMID_LEVELS> m_K, m_K_inv;
@@ -127,8 +128,8 @@ public:
   std::array<Eigen::Vector4f, PYRAMID_LEVELS> m_gradients;
 };
 
-keyframe_obj::keyframe_obj(int t_id, int t_width, int t_height, const Eigen::Matrix3f& t_K) : m_id(t_id) {
-  m_pose = std::make_unique<keyframe_pose_obj>(this);
+Keyframe::Keyframe(int t_id, int t_width, int t_height, const Eigen::Matrix3f& t_K) : m_id(t_id) {
+  m_pose = std::make_unique<KeyframePose>(this);
 
   m_K[0] = t_K;
   m_fx[0] = t_K(0,0);
@@ -147,15 +148,15 @@ keyframe_obj::keyframe_obj(int t_id, int t_width, int t_height, const Eigen::Mat
 
 
 // reference frame(?) to update map
-// tracking_reference precedes the se3_tracker
-class tracking_reference {
+// ReferenceTracker precedes theSE3Tracker 
+class ReferenceTracker {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  tracking_reference();
+  ReferenceTracker();
 
   int m_frame_id;
-  keyframe_obj* m_keyframe;
+  Keyframe* m_keyframe;
 
   // NOTE: not sure why original source code used pointers for this
   std::array<std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f>>, PYRAMID_LEVELS> m_pos;   // (x,y,z)
@@ -163,20 +164,20 @@ public:
   std::array<std::vector<Eigen::Vector2f, Eigen::aligned_allocator<Eigen::Vector2f>>, PYRAMID_LEVELS> m_Ivar;  // (I, var) color and variance
 };
 
-tracking_reference::tracking_reference() : m_frame_id(-1), m_keyframe(nullptr) {
+ReferenceTracker::ReferenceTracker() : m_frame_id(-1), m_keyframe(nullptr) {
 
 }
 
 
 
-class se3_tracker {
+class SE3Tracker {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K);
-  se3_tracker(const se3_tracker&) = delete;
-  se3_tracker& operator=(const se3_tracker&) = delete;
-  ~se3_tracker();
+  SE3Tracker(int t_w, int t_h, Eigen::Matrix3f t_K);
+  SE3Tracker(const SE3Tracker&) = delete;
+  SE3Tracker& operator=(const SE3Tracker&) = delete;
+  ~SE3Tracker();
 
   int m_width, m_height;
 
@@ -184,7 +185,7 @@ public:
   float m_fx, m_fy, m_cx, m_cy;
   float m_fix, m_fiy, m_cix, m_ciy;
 
-  Sophus::SE3d track_frame(tracking_reference* t_ref, keyframe_obj* t_frame, const Sophus::SE3d& t_frame_to_ref_initial_estimate);
+  Sophus::SE3d track_frame(ReferenceTracker* t_ref, Keyframe* t_frame, const Sophus::SE3d& t_frame_to_ref_initial_estimate);
 
 private:
   /*
@@ -203,7 +204,7 @@ private:
                                     const Eigen::Vector2f* ref_col_var,
                                     int* idx_buf,
                                     int ref_num,
-                                    const keyframe_obj& frame,
+                                    const Keyframe& frame,
                                     const Sophus::SE3d& ref_to_frame,
                                     int lvl);
 
@@ -219,7 +220,7 @@ private:
 	int m_buf_warped_size;
 };
 
-se3_tracker::se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h), m_K(t_K), m_K_inv(t_K.inverse()) {
+SE3Tracker::SE3Tracker(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h), m_K(t_K), m_K_inv(t_K.inverse()) {
   m_fx = t_K(0,0);
   m_fy = t_K(1,1);
 	m_cx = t_K(0,2);
@@ -233,22 +234,22 @@ se3_tracker::se3_tracker(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), 
   m_buf_warped_size = 0;
 }
 
-se3_tracker::~se3_tracker() {
+SE3Tracker::~SE3Tracker() {
   // free (owning) buffers
 
 }
 
-Sophus::SE3d se3_tracker::track_frame(tracking_reference* t_ref, keyframe_obj* t_frame,
+Sophus::SE3d SE3Tracker::track_frame(ReferenceTracker* t_ref, Keyframe* t_frame,
                                       const Sophus::SE3d& t_frame_to_ref_initial_estimate) {
   return Sophus::SE3d();
 }
 
 
-float se3_tracker::calculate_residual_and_bufs(const Eigen::Vector3f* ref_pnt,
+float SE3Tracker::calculate_residual_and_bufs(const Eigen::Vector3f* ref_pnt,
                                   const Eigen::Vector2f* ref_col_var,
                                   int* idx_buf,
                                   int ref_num,
-                                  const keyframe_obj& frame,
+                                  const Keyframe& frame,
                                   const Sophus::SE3d& ref_to_frame,
                                   int lvl) {
   return 0.f;
@@ -258,42 +259,42 @@ float se3_tracker::calculate_residual_and_bufs(const Eigen::Vector3f* ref_pnt,
 
 
 
-class slam_context {
+class SlamContext {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
 
-  slam_context(int t_w, int t_h, Eigen::Matrix3f t_K);
-  ~slam_context() = default;
+  SlamContext(int t_w, int t_h, Eigen::Matrix3f t_K);
+  ~SlamContext() = default;
   //    disable copying
-  slam_context(const slam_context&) = delete;
-  slam_context& operator=(const slam_context&) = delete;
+  SlamContext(const SlamContext&) = delete;
+  SlamContext& operator=(const SlamContext&) = delete;
 
   void random_init(int frame_id);
 
   int m_width, m_height;
   Eigen::Matrix3f m_K;
 
-  std::shared_ptr<keyframe_obj> m_current_keyframe;
+  std::shared_ptr<Keyframe> m_current_keyframe;
 
 private:
   //    tracking thread
-  std::unique_ptr<tracking_reference> m_reference_tracker;
-  std::unique_ptr<se3_tracker> m_pose_tracker;
+  std::unique_ptr<ReferenceTracker> m_reference_tracker;
+  std::unique_ptr<SE3Tracker> m_pose_tracker;
 
   // mapping thread
-  std::unique_ptr<tracking_reference> m_mapping_reference_tracker;
+  std::unique_ptr<ReferenceTracker> m_mapping_reference_tracker;
 };
 
-slam_context::slam_context(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h),
+SlamContext::SlamContext(int t_w, int t_h, Eigen::Matrix3f t_K) : m_width(t_w), m_height(t_h),
                                                                     m_K(t_K), m_current_keyframe(nullptr) {
-  std::cout << "slam_context instantiated" << '\n';
-  m_reference_tracker = std::make_unique<tracking_reference>();
-  m_mapping_reference_tracker = std::make_unique<tracking_reference>();
-  m_pose_tracker = std::make_unique<se3_tracker>(t_w, t_h, t_K);
+  std::cout << "SlamContext instantiated" << '\n';
+  m_reference_tracker = std::make_unique<ReferenceTracker>();
+  m_mapping_reference_tracker = std::make_unique<ReferenceTracker>();
+  m_pose_tracker = std::make_unique<SE3Tracker>(t_w, t_h, t_K);
 }
 
-void slam_context::random_init(int frame_id) {
-  m_current_keyframe.reset(new keyframe_obj(frame_id, m_width, m_height, m_K));
+void SlamContext::random_init(int frame_id) {
+  m_current_keyframe.reset(new Keyframe(frame_id, m_width, m_height, m_K));
 }
 
 
@@ -308,7 +309,7 @@ int main(int argc, char** argv) {
       0.f,   0.f,   1.f;
 
   int running_idx = 0;
-  std::unique_ptr<slam_context> ctx = std::make_unique<slam_context>(w,h,K);
+  std::unique_ptr<SlamContext> ctx = std::make_unique<SlamContext>(w,h,K);
   ctx->random_init(running_idx);
 
     // opencv

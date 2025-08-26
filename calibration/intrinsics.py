@@ -9,10 +9,7 @@ if __name__ == '__main__':
   chessboard_fp = '../lsd-slam/media/car_pov.mp4'
   objp = np.zeros((6*7,3), np.float32)
   objp[:,:2] = np.mgrid[0:7,0:6].T.reshape(-1,2)
-  objpoints = [] # 3d point in real world space
-  imgpoints = [] # 2d points in image plane.
-
-  frames = []
+  objpoints, imgpoints, frames = [],[],[] # 3d/2d point in real world space, frames
 
   for fname in images:
     frame = cv2.imread(fname)
@@ -24,7 +21,14 @@ if __name__ == '__main__':
       corners2 = cv2.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
       imgpoints.append(corners2)
 
-  # ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-  ret = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-  for m in ret:
-    print(m)
+  ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+  # ret = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+
+  img = cv2.imread('data/left12.jpg')
+  h,w = img.shape[:2]
+  newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w,h), 1, (w,h))
+
+  dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
+  x, y, w, h = roi
+  dst = dst[y:y+h, x:x+w]
+  cv2.imwrite('calibresult.png', dst)
