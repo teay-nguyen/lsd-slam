@@ -49,3 +49,48 @@ what are semi-dense depth maps? how are they represented pragmatically?
 what is direct image alignment?
 what is filtering-based estimation of semi-dense depth maps?
 what is a covariance?
+
+Graph SLAM tutorial: p.4
+
+
+algorithm flow:
+
+1. frame capture
+* captures a new grayscale image
+* camera intrinsics (focal length, principal point) are known
+* image is undistorted and stored as Frame object
+
+2. tracking (estimate camera pose)
+goal: figure out where the new frame is relative to the last keyframe
+* direct image alignment: Instead of using features (ORB, SIFT), LSD-SLAM directly minimizes photometric error
+where w(p,T) warps pixel p using the current pose hypothesis T
+* Optimized with Gauss-Newton → gives a 6-DoF pose (SE3)
+
+3. Depth Map estimation (semi-dense mapping)
+goal: build a depeth hypothesis for each pixel with sufficient gradient
+* for selected pixels (edges, gradients), lsd slam maintains:
+  * depth estimate(mean of inverse depth)
+  * uncertainty (variance)
+* new frames update these via stereo comparisons:
+  * project pixel onto new frame
+  * refine depth with small baseline stereo matching
+* over time, uncertainty decreases -> depth map becomes more accurate
+
+4. keyframe management
+* not every frame becomes a keyframe(too expensive)
+* criteria: enough camera motion of scene change
+* when chosen:
+  * store image + depth hypotheses
+  * depth refinement continues across multiple future frames.
+
+5. pose graph optim (global consistency)
+goal: avoid drift by loop closure
+* every keyframe is a node in a graph
+* edges are relative sim(3) transformations(scale + rotation + translation)
+* if system recognizes overlap between two distant keyframes -> loop closure edge is added
+* optim (g2o) adjusts the whole graph to enforce global consistency.
+
+6. map output
+* Result: globally consistent semi-dense map of scene surfaces.
+* Only high-gradient pixels have depth → that’s why LSD-SLAM is called semi-dense.
+* map can be meshed or visualized as a point cloud
