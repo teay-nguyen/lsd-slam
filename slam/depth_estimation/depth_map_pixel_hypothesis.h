@@ -12,6 +12,9 @@ and finally hands the “best” (smoothed) values to frames / pose-graph.
 
 Models inverse depth with an uncertainty and bookkeeping used by fusion, pruning, and scheduling.
 
+* lets the system maintain a semi-dense probabilistic depth map, where each pixel hypothesis is incrementally updated
+  filtered, and used for tracking and mapping.
+
 */
 
 namespace lsd_slam {

@@ -1,2 +1,3 @@
-cmake -B build
-cmake --build build
+cmake -S . -B build -G Ninja
+cd build
+ninja
