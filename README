@@ -13,5 +13,3 @@ V : Ω -> R - inverse depth variance
 notes:
 - CPU SIMD: AVX2/AVX-512 (or NEON) for residuals/gradients
 - CUDA specifics: texture memory for warps, shared-mem tiling for Jacobians, warp-level reductions, streams for overlap, pinned & page-locked host buffers
-- (maybe) replace raw-intensity error with a learned dense descriptor
-- (maybe) tightly-coupled IMU (VIO) with preintegration
