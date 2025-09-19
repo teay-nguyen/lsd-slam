@@ -50,10 +50,7 @@ what is direct image alignment?
 what is filtering-based estimation of semi-dense depth maps?
 what is a covariance?
 
-Graph SLAM tutorial: p.4
-
-
-algorithm flow:
+algorithm flow 1:
 
 1. frame capture
 * captures a new grayscale image
@@ -94,3 +91,28 @@ goal: avoid drift by loop closure
 * Result: globally consistent semi-dense map of scene surfaces.
 * Only high-gradient pixels have depth → that’s why LSD-SLAM is called semi-dense.
 * map can be meshed or visualized as a point cloud
+
+
+
+algorithm flow 2:
+
+graph of keyframes stores: image, inverse depth map(semi-dense, only in textured regions), variance map (uncertainty of each depth)
+edges between keyframes = Sim(3) transforms (scale, rotation, translation)
+
+for new incoming frame:
+* warp pixels from the ref keyframe into the new frame (using the depth map)
+* compare their intensities, giving photometric residuals
+* minimize the photometric error using gauss-newton on se(3)/sim(3)
+* this gives the relative pose between frames
+
+each keyframe, a semi-dense inverse depth map is built:
+* pixels with sufficient gradients (edges, textured areas) are selected.
+* depth is estimated from small-baseline stereo comparisons with nearby frames
+* variance is updated with each observation -> uncertainty shrinks over time
+
+* not every frame becomes a keyframe
+* new keyframes are created when the viewpoint changes enough (translation/rot/scale)
+
+* as the algo accrue more keyframes, a pose graph is built (updated or instantiated?)
+* when loops are detected (revisiting an area), new constraints are added
+* a graph optim step (nonlinear least squares) adjusts all poses to avoid drift and ensure consistent trajectory
